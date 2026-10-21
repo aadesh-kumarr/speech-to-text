@@ -1,0 +1,9 @@
+node_modules
+.next
+src/generated
+prisma/migrations
+prisma/schema.prisma
+package-lock.json
+next-env.d.ts
+.env*
+public
