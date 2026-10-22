@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   CalendarDays,
   ChevronLeft,
@@ -46,31 +46,40 @@ export function TranscriptHistory({ refreshKey }: { refreshKey: number }) {
   const [selected, setSelected] = useState<TranscriptItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(false);
-
-    try {
-      const response = await fetch(`/api/transcripts?page=${page}&sort=${sort}`, {
-        cache: "no-store",
-      });
-
-      if (!response.ok) {
-        throw new Error("Could not load transcript history");
-      }
-
-      setData(await response.json());
-    } catch {
-      setError(true);
-    } finally {
-      setLoading(false);
-    }
-  }, [page, sort]);
+  const [retryKey, setRetryKey] = useState(0);
 
   useEffect(() => {
-    void load();
-  }, [load, refreshKey]);
+    let cancelled = false;
+
+    async function fetchHistory() {
+      try {
+        const response = await fetch(`/api/transcripts?page=${page}&sort=${sort}`, {
+          cache: "no-store",
+        });
+
+        if (!response.ok) {
+          throw new Error("Could not load transcript history");
+        }
+
+        const nextData = (await response.json()) as Data;
+
+        if (!cancelled) {
+          setData(nextData);
+          setError(false);
+        }
+      } catch {
+        if (!cancelled) setError(true);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    void fetchHistory();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [page, sort, refreshKey, retryKey]);
 
   return (
     <>
@@ -90,6 +99,7 @@ export function TranscriptHistory({ refreshKey }: { refreshKey: number }) {
             aria-label="Sort transcripts"
             value={sort}
             onChange={(event) => {
+              setLoading(true);
               setSort(event.target.value);
               setPage(1);
             }}
@@ -105,7 +115,13 @@ export function TranscriptHistory({ refreshKey }: { refreshKey: number }) {
           {loading ? (
             <HistorySkeleton />
           ) : error ? (
-            <HistoryError onRetry={() => void load()} />
+            <HistoryError
+              onRetry={() => {
+                setLoading(true);
+                setError(false);
+                setRetryKey((currentKey) => currentKey + 1);
+              }}
+            />
           ) : data?.items.length ? (
             data.items.map((item) => (
               <article
@@ -181,7 +197,10 @@ export function TranscriptHistory({ refreshKey }: { refreshKey: number }) {
                   size="icon"
                   className="size-8"
                   disabled={page <= 1 || loading}
-                  onClick={() => setPage((currentPage) => currentPage - 1)}
+                  onClick={() => {
+                    setLoading(true);
+                    setPage((currentPage) => currentPage - 1);
+                  }}
                 >
                   <ChevronLeft className="size-4" />
                 </Button>
@@ -191,7 +210,10 @@ export function TranscriptHistory({ refreshKey }: { refreshKey: number }) {
                   size="icon"
                   className="size-8"
                   disabled={page >= (data?.totalPages || 1) || loading}
-                  onClick={() => setPage((currentPage) => currentPage + 1)}
+                  onClick={() => {
+                    setLoading(true);
+                    setPage((currentPage) => currentPage + 1);
+                  }}
                 >
                   <ChevronRight className="size-4" />
                 </Button>
